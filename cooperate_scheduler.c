@@ -38,7 +38,7 @@ static float oen_tick_time = 1; // ms
  * @return true
  * @return false
  */
-bool Functional_execute(Functional_t *functional)
+bool BoolFunctional_execute(BoolFunctional_t *functional)
 {
     bool exe_source_free = false;
     if (functional->fun != NULL)
@@ -87,7 +87,7 @@ void cooperate_scheduler_handler()
                     // 这里需要保证一定的实时性
                     if ((scheduler_get_cpu_tick() - task->last_exe_tick) >= task->period)
                     {
-                        exe_source_free = Functional_execute(&task->fun);
+                        exe_source_free = BoolFunctional_execute(&task->fun);
                         if (exe_source_free)
                         {
                             task->_elapsed_tick_since_last_exe = scheduler_get_cpu_tick() - task->last_exe_tick;

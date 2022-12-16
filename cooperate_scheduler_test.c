@@ -36,9 +36,9 @@ if (i % 1000 == 0)
 [cooperate_scheduler Test]: fun3:exe times: 2000
 [cooperate_scheduler Test]: fun3:exe times: 3000
 */
-TaskNode_t *gTask = NULL;
+static TaskNode_t *gTask = NULL;
 
-bool fun1(void *arg)
+static bool fun1(void *arg)
 {
     TaskNode_t *task_self = (TaskNode_t *)arg;
     static int i = 0;
@@ -47,7 +47,7 @@ bool fun1(void *arg)
     return true;
 }
 
-bool fun2(void *arg)
+static bool fun2(void *arg)
 {
     TaskNode_t *task_self = (TaskNode_t *)arg;
     static int i = 0;
@@ -56,7 +56,7 @@ bool fun2(void *arg)
     return true;
 }
 
-bool fun3(void *arg)
+static bool fun3(void *arg)
 {
     static int i = 0;
     if (i % 1000 == 0)
@@ -117,7 +117,7 @@ void cooperate_scheduler_test1()
 }
 
 bool global_resource = false; // true表示占用中
-bool fun5(void *arg)
+static bool fun5(void *arg)
 {
     bool ret = false;
 
@@ -136,7 +136,7 @@ bool fun5(void *arg)
     return ret;
 }
 
-bool fun6(void *arg)
+static bool fun6(void *arg)
 {
     bool ret = false;
 

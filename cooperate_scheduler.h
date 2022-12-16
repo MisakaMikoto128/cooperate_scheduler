@@ -21,13 +21,13 @@
 /* Config CPU Tick here */
 #define scheduler_get_cpu_tick() (getCurrentMilliSecTimestamp() - 1671163704392ULL)
 
-typedef bool (*Function_t)(void *arg);
+typedef bool (*BoolFunction_t)(void *arg);
 
-typedef struct tagFunctional_t
+typedef struct tagBoolFunctional_t
 {
-    Function_t fun;
+    BoolFunction_t fun;
     void *arg;
-} Functional_t;
+} BoolFunctional_t;
 
 typedef struct tagFunctionalListNode_t
 {
@@ -43,7 +43,7 @@ typedef struct tagFunctionalListNode_t
 
     uint32_t delay_before_first_exe;       // 从注册第一次真正执行调度的延迟
     uint32_t register_tick;                // 注册时刻
-    Functional_t fun;                      // 执行的方法
+    BoolFunctional_t fun;                      // 执行的方法
     int32_t _exe_tick_error;               // 执行时刻误差
     uint32_t _elapsed_tick_since_last_exe; // 距离上传执行逝去了多少事件
 
