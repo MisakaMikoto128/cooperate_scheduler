@@ -130,7 +130,7 @@ void cooperate_scheduler_handler()
     }
 }
 
-bool cooperate_scheduler_register(CooperativeGroup_t *group)
+bool cooperate_scheduler_group_register(CooperativeGroup_t *group)
 {
     bool ret = false;
     if (group != NULL)
@@ -188,7 +188,7 @@ bool cooperate_scheduler_unregister(CooperativeGroup_t *group)
     return ret;
 }
 
-void cooperate_group_init(CooperativeGroup_t *group)
+void cooperate_scheduler_group_init(CooperativeGroup_t *group)
 {
     sc_list_init(&group->task_list);
 }
@@ -200,12 +200,11 @@ void cooperate_group_init(CooperativeGroup_t *group)
  * 调度频率的准确性。
  * 
  * @param group 
- * @param ms > 1
+ * @param ms >= 0
  */
 void cooperate_group_set_min_resoure_occupation_time(CooperativeGroup_t* group,uint32_t ms)
 {
     group->min_period = ms / oen_tick_time;
-    group->min_period = group->min_period == 0 ? 1 : group->min_period;
 }
 
 /**

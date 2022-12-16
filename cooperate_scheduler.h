@@ -54,7 +54,7 @@ typedef struct tagCooperativeGroup_t
 {
     // 每个group中每个方法的最小执行时间间隔,如果一个组占用的资源总是呗占用的，那么会
     // 以这个min_period轮询当前任务，直到资源被释放，这个任务才会执行成功(获取到资源)。
-    // 单位：tick,范围 >= 1。任务组中任务最小资源占用时间指的是
+    // 单位：tick,范围 >= 0。任务组中任务最小资源占用时间指的是
     // 任务组中的任务都会占用同一个全局资源，每个任务占用的时间可能不一样，这里设置
     // 一个最小的占用时间，用于任务组内任务请求资源失败的延时。设置为最小是为了保证
     // 调度频率的准确性。
@@ -88,7 +88,7 @@ void cooperate_scheduler_handler();
  * @param sche_node
  * @retval true 注册成功，false 注册失败。
  */
-bool cooperate_scheduler_register(CooperativeGroup_t *group);
+bool cooperate_scheduler_group_register(CooperativeGroup_t *group);
 
 /**
  * @brief 任务是否是注册的状态。
@@ -106,13 +106,13 @@ bool cooperate_scheduler_is_group_registered(CooperativeGroup_t *group);
  * @return true 如果任务注册过，且无其他原因导致取消注册失败。
  * @return false 任务未注册过，或者其他原因取消注册成功。
  */
-bool cooperate_scheduler_unregister(CooperativeGroup_t *group);
+bool cooperate_scheduler_group_unregister(CooperativeGroup_t *group);
 
 /**
  * @brief Scheduler初始化。
  *
  */
-void cooperate_group_init(CooperativeGroup_t *group);
+void cooperate_scheduler_group_init(CooperativeGroup_t *group);
 
 /**
  * @brief 设置任务组中任务最小资源占用时间。任务组中任务最小资源占用时间指的是
@@ -121,7 +121,7 @@ void cooperate_group_init(CooperativeGroup_t *group);
  * 调度频率的准确性。
  * 
  * @param group 
- * @param ms >1
+ * @param ms >=0
  */
 void cooperate_group_set_min_resoure_occupation_time(CooperativeGroup_t* group,uint32_t ms);
 

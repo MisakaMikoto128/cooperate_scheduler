@@ -76,11 +76,11 @@ void cooperate_scheduler_test1()
     cooperate_scheduler_init();
     CooperativeGroup_t group1;
     CooperativeGroup_t group2;
-    cooperate_group_init(&group1);
-    cooperate_group_init(&group2);
+    cooperate_scheduler_group_init(&group1);
+    cooperate_scheduler_group_init(&group2);
 
-    cooperate_scheduler_register(&group1);
-    cooperate_scheduler_register(&group2);
+    cooperate_scheduler_group_register(&group1);
+    cooperate_scheduler_group_register(&group2);
 
     TaskNode_t task1 =
         {
@@ -162,11 +162,11 @@ void cooperate_scheduler_test()
     cooperate_scheduler_init();
     CooperativeGroup_t group1;
     CooperativeGroup_t group2;
-    cooperate_group_init(&group1);
-    cooperate_group_init(&group2);
+    cooperate_scheduler_group_init(&group1);
+    cooperate_scheduler_group_init(&group2);
 
-    cooperate_scheduler_register(&group1);
-    cooperate_scheduler_register(&group2);
+    cooperate_scheduler_group_register(&group1);
+    cooperate_scheduler_group_register(&group2);
     cooperate_group_set_min_resoure_occupation_time(&group1, 500);
     TaskNode_t task1 =
         {
