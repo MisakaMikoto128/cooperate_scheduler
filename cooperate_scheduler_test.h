@@ -9,6 +9,7 @@
  * 
  */
 #include "cooperate_scheduler.h"
+#include "cpu_time.h"
 #ifndef cooperate_scheduler_TEST_H
 #define cooperate_scheduler_TEST_H
 

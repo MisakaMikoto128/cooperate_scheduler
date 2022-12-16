@@ -1,19 +1,17 @@
 /**
  * @file cooperate_scheduler.c
  * @author Liu Yuanlin (liuyuanlins@outlook.com)
- * @brief 
+ * @brief
  * @version 0.1
  * @date 2022-12-14
- * 
+ *
  * @copyright Copyright (c) 2022 Liu Yuanlin Personal.
- * 
+ *
  */
 #include "cooperate_scheduler.h"
-#include "cpu_time.h"
-/* Config CPU Tick here */
-#define scheduler_get_cpu_tick getCurrentMilliSecTimestamp
-static struct sc_list _gcooperate_schedulerList = {NULL, NULL};
-static struct sc_list *gcooperate_schedulerList = &_gcooperate_schedulerList;
+
+static CooperateScheduler_t _gcooperate_scheduler;
+
 static float oen_tick_time = 1; // ms
 
 /*
@@ -30,12 +28,24 @@ static float oen_tick_time = 1; // ms
 那么到cooperate_scheduler_handler中处理相应的task时会马上就执行一次。
 */
 
-void Functional_execute(Functional_t *functional)
+/**
+ * @brief 一个Group通常是一系列占用同一资源的方法，这个方法返回的true表示的是这次执行调度时发现资源任然忙碌，
+ * 调度时考虑几点问题：
+ *  1. 上次执行时刻到本次调度的时刻时间差大于执行周期
+ *  2. 一个组内的task调度点几乎都在同一时刻，这样执行失败的次数会增加，怎样减少执行失败的次数
+ *  3. 考虑执行频率是否符合预期，执行间隔是否足够均匀
+ * @param functional
+ * @return true
+ * @return false
+ */
+bool Functional_execute(Functional_t *functional)
 {
+    bool exe_source_free = false;
     if (functional->fun != NULL)
     {
-        functional->fun(functional->arg);
+        exe_source_free = functional->fun(functional->arg);
     }
+    return exe_source_free;
 }
 
 /**
@@ -44,7 +54,7 @@ void Functional_execute(Functional_t *functional)
  */
 void cooperate_scheduler_init()
 {
-    sc_list_init(gcooperate_schedulerList);
+    sc_list_init(&_gcooperate_scheduler.group_list);
 }
 
 /**
@@ -53,48 +63,160 @@ void cooperate_scheduler_init()
  */
 void cooperate_scheduler_handler()
 {
-    struct sc_list *it = NULL;
-    cooperate_schedulerTask_t *task = NULL;
+    static struct sc_list *it = NULL;
+    static CooperativeGroup_t *group = NULL;
+    static const struct sc_list *group_list = &_gcooperate_scheduler.group_list;
 
-    sc_list_foreach(gcooperate_schedulerList, it)
+    static struct sc_list *it_task = NULL;
+    static TaskNode_t *task = NULL;
+    // Group所共用的资源是否是空闲的
+    static bool exe_source_free = false;
+    static struct sc_list *poped = NULL;
+    sc_list_foreach(group_list, it)
     {
-        task = sc_list_entry(it, cooperate_schedulerTask_t, next);
-        if (scheduler_get_cpu_tick() >= (task->register_tick + task->delay_before_first_exe))
+        group = sc_list_entry(it, CooperativeGroup_t, next);
+        sc_list_foreach(&group->task_list, it_task)
         {
-            if (task->exe_cnt < task->exe_times)
+            task = sc_list_entry(it_task, TaskNode_t, next);
+            if (scheduler_get_cpu_tick() >= (task->register_tick + task->delay_before_first_exe))
             {
-                // 这里一定是>=，如果是 > ，那么在1 cpu tick间隔的时候时间上是2cpu tick执行一次。
-                // 这里不允许period为0，不然就会失去调度作用。
-                // 这里需要保证一定的实时性
-                if ((scheduler_get_cpu_tick() - task->last_exe_tick) >= task->period)
+                if (task->exe_cnt < task->exe_times)
                 {
+                    // 这里一定是>=，如果是 > ，那么在1 cpu tick间隔的时候时间上是2cpu tick执行一次。
+                    // 这里不允许period为0，不然就会失去调度作用。
+                    // 这里需要保证一定的实时性
+                    if ((scheduler_get_cpu_tick() - task->last_exe_tick) >= task->period)
+                    {
+                        exe_source_free = Functional_execute(&task->fun);
+                        if (exe_source_free)
+                        {
+                            task->_elapsed_tick_since_last_exe = scheduler_get_cpu_tick() - task->last_exe_tick;
+                            task->_exe_tick_error = task->_elapsed_tick_since_last_exe - 2 * task->period;
+                            if (task->_exe_tick_error > 0)
+                            {
+                                // 调整后的上一次的执行时刻
+                                task->last_exe_tick = scheduler_get_cpu_tick();
+                            }
+                            else
+                            {
+                                task->last_exe_tick += task->period;
+                            }
+                            task->exe_cnt++;
+                            task->exe_cnt = task->exe_cnt == cooperate_scheduler_EXE_TIMES_INF ? 0 : task->exe_cnt;
 
-                    Functional_execute(&task->fun);
-                    task->_elapsed_tick_since_last_exe = scheduler_get_cpu_tick() - task->last_exe_tick;
-                    task->_exe_tick_error = task->_elapsed_tick_since_last_exe - task->period;
-                    if (task->_exe_tick_error > 0)
-                    {
-                        task->last_exe_tick = scheduler_get_cpu_tick();
+                            poped = sc_list_pop_head(&group->task_list);
+                            sc_list_add_tail(&group->task_list, poped);
+                        }
+                        else
+                        {
+                            task->_elapsed_tick_since_last_exe = scheduler_get_cpu_tick() - task->last_exe_tick;
+                            task->_exe_tick_error = task->_elapsed_tick_since_last_exe - 2 * task->period;
+                            if (task->_exe_tick_error > 0)
+                            {
+                                // 调整后的上一次的执行时刻
+                                task->last_exe_tick = scheduler_get_cpu_tick();
+                            }
+                            else
+                            {
+                                // 这个任务这次发现资源忙以后会等待1个tick再去执行Functional_execute看资源是否可用
+                                task->last_exe_tick += group->min_period;
+                            }
+                            task->exe_fail_cnt++;
+                        }
                     }
-                    else
-                    {
-                        task->last_exe_tick += task->period;
-                    }
-                    task->exe_cnt++;
-                    task->exe_cnt = task->exe_cnt == cooperate_scheduler_EXE_TIMES_INF ? 0 : task->exe_cnt;
                 }
             }
         }
     }
 }
 
+bool cooperate_scheduler_register(CooperativeGroup_t *group)
+{
+    bool ret = false;
+    if (group != NULL)
+    {
+        group->min_period = 1;
+        sc_list_init(&group->next);
+        sc_list_add_tail(&_gcooperate_scheduler.group_list, &group->next);
+        ret = true;
+    }
+    return ret;
+}
+
+bool cooperate_scheduler_is_group_registered(CooperativeGroup_t *group)
+{
+    bool ret = false;
+    if (group != NULL)
+    {
+        struct sc_list *it = NULL;
+        CooperativeGroup_t *_group = NULL;
+        struct sc_list *item, *tmp;
+
+        sc_list_foreach_safe(&_gcooperate_scheduler.group_list, tmp, it)
+        {
+            _group = sc_list_entry(it, CooperativeGroup_t, next);
+            if (_group == group)
+            {
+                ret = true;
+                break;
+            }
+        }
+    }
+    return ret;
+}
+
+bool cooperate_scheduler_unregister(CooperativeGroup_t *group)
+{
+    bool ret = false;
+    if (group != NULL)
+    {
+        struct sc_list *it = NULL;
+        CooperativeGroup_t *_group = NULL;
+        struct sc_list *item, *tmp;
+
+        sc_list_foreach_safe(&_gcooperate_scheduler.group_list, tmp, it)
+        {
+            _group = sc_list_entry(it, CooperativeGroup_t, next);
+            if (_group == group)
+            {
+                sc_list_del(&_gcooperate_scheduler.group_list, &_group->next);
+                ret = true;
+                break;
+            }
+        }
+    }
+    return ret;
+}
+
+void cooperate_group_init(CooperativeGroup_t *group)
+{
+    sc_list_init(&group->task_list);
+}
+
 /**
- * @brief 将任务节点注册到cooperate_scheduler中。
- * @note 这个函数会避免period为0的情况，如果period为0，那么period会变为1。
- * @param sche_node
- * @retval true 注册成功，false 注册失败。
+ * @brief 设置任务组中任务最小资源占用时间。任务组中任务最小资源占用时间指的是
+ * 任务组中的任务都会占用同一个全局资源，每个任务占用的时间可能不一样，这里设置
+ * 一个最小的占用时间，用于任务组内任务请求资源失败的延时。设置为最小是为了保证
+ * 调度频率的准确性。
+ * 
+ * @param group 
+ * @param ms > 1
  */
-bool cooperate_scheduler_register(cooperate_schedulerTask_t *task)
+void cooperate_group_set_min_resoure_occupation_time(CooperativeGroup_t* group,uint32_t ms)
+{
+    group->min_period = ms / oen_tick_time;
+    group->min_period = group->min_period == 0 ? 1 : group->min_period;
+}
+
+/**
+ * @brief 将任务节点注册到协同组中。
+ *
+ * @param group 协同组对象指针。
+ * @param task 任务指针。
+ * @return true 注册成功。
+ * @return false 注册失败。
+ */
+bool cooperate_group_register(CooperativeGroup_t *group, TaskNode_t *task)
 {
     bool ret = false;
     if (task != NULL)
@@ -102,30 +224,32 @@ bool cooperate_scheduler_register(cooperate_schedulerTask_t *task)
         task->register_tick = scheduler_get_cpu_tick();
         task->period = task->period == 0 ? 1 : task->period;
         sc_list_init(&task->next);
-        sc_list_add_tail(gcooperate_schedulerList, &task->next);
+        sc_list_add_tail(&group->task_list, &task->next);
         ret = true;
     }
     return ret;
 }
 
 /**
- * @brief 任务是否是注册的状态。
+ * @brief 判断任务节点是否已经注册到协同组中。
  *
- * @param sche_node
- * @retval true 任然是注册的，false 未注册。
+ * @param group 协同组对象指针。
+ * @param task 任务指针。
+ * @return true 在任务组中。
+ * @return false 不在任务组中。
  */
-bool cooperate_scheduler_is_task_registered(cooperate_schedulerTask_t *task)
+bool cooperate_group_is_task_registered(CooperativeGroup_t *group, TaskNode_t *task)
 {
     bool ret = false;
     if (task != NULL)
     {
         struct sc_list *it = NULL;
-        cooperate_schedulerTask_t *_task = NULL;
+        TaskNode_t *_task = NULL;
         struct sc_list *item, *tmp;
 
-        sc_list_foreach_safe(gcooperate_schedulerList, tmp, it)
+        sc_list_foreach_safe(&group->task_list, tmp, it)
         {
-            _task = sc_list_entry(it, cooperate_schedulerTask_t, next);
+            _task = sc_list_entry(it, TaskNode_t, next);
             if (_task == task)
             {
                 ret = true;
@@ -137,30 +261,27 @@ bool cooperate_scheduler_is_task_registered(cooperate_schedulerTask_t *task)
 }
 
 /**
- * @brief 取消已经注册到cooperate_scheduler中的任务。
- * @note 这个方法会清空已经执行的次数。
+ * @brief 取消已经注册到任务组中的任务。
+ *
  * @param task
  * @return true 如果任务注册过，且无其他原因导致取消注册失败。
  * @return false 任务未注册过，或者其他原因取消注册成功。
  */
-bool cooperate_scheduler_unregister(cooperate_schedulerTask_t *task)
+bool cooperate_group_unregister(CooperativeGroup_t *group, TaskNode_t *task)
 {
     bool ret = false;
     if (task != NULL)
     {
         struct sc_list *it = NULL;
-        cooperate_schedulerTask_t *_task = NULL;
+        TaskNode_t *_task = NULL;
         struct sc_list *item, *tmp;
 
-        sc_list_foreach_safe(gcooperate_schedulerList, tmp, it)
+        sc_list_foreach_safe(&group->task_list, tmp, it)
         {
-            _task = sc_list_entry(it, cooperate_schedulerTask_t, next);
+            _task = sc_list_entry(it, TaskNode_t, next);
             if (_task == task)
             {
-                // 清空task
-                task->exe_cnt = 0;
-
-                sc_list_del(gcooperate_schedulerList, &_task->next);
+                sc_list_del(&group->task_list, &_task->next);
                 ret = true;
                 break;
             }
@@ -172,62 +293,14 @@ bool cooperate_scheduler_unregister(cooperate_schedulerTask_t *task)
 /**
  * @brief 设置任务节点的频率。
  *
- * @param task
+ * @param group
  * @param freq 1-1000Hz
  * @return None
  */
-void cooperate_scheduler_set_freq(cooperate_schedulerTask_t *task, int freq)
+void cooperate_scheduler_set_task_freq(TaskNode_t *task, int freq)
 {
     if (task != NULL)
     {
         task->period = 1000.0f / freq / oen_tick_time;
     }
-}
-
-Period_t period_last_exe_tick_table[MAX_PERIOD_ID + 1] = {0};
-
-/**
- * @brief 查询是否到了需要的周期。这个函数中高速查询，如果判断周期到了，就会
- * 返回true，否则返回false,并且当周期到了之后会更新last_exe_tick，保证每周期只会判
- * 断结果为真一次。用于在主循环中方便的构建周期性执行的代码段。
- *
- * 内置一个Period_t的最后一次执行时间的时间戳表，period_id标识。
- * @param period_id 周期id，全局唯一。
- * @param period 周期。
- * @return true 周期到了
- * @return false 周期未到。
- */
-bool period_query(uint8_t period_id, uint32_t period)
-{
-    bool ret = false;
-
-    // 这里一定是>=，如果是 > ，那么在1 cpu tick间隔的时候时间上是2cpu tick执行一次。
-    // 这里不允许period为0，不然就会失去调度作用。
-    if ((scheduler_get_cpu_tick() - period_last_exe_tick_table[period_id]) >= period)
-    {
-        period_last_exe_tick_table[period_id] = scheduler_get_cpu_tick();
-        ret = true;
-    }
-    return ret;
-}
-
-/**
- * @brief 同period_query_user，只是时间记录再一个uint32_t*指向的变量中。
- *
- * @param period_recorder 记录运行时间的变量的指针。
- * @param period 周期。
- * @return true 周期到了
- * @return false 周期未到。
- */
-bool period_query_user(uint32_t *period_recorder, uint32_t period)
-{
-    bool ret = false;
-    // 这里一定是>=，如果是 > ，那么在1 cpu tick间隔的时候时间上是2cpu tick执行一次。
-    // 这里不允许period为0，不然就会失去调度作用。
-    if ((scheduler_get_cpu_tick() - *period_recorder) >= period)
-    {
-        *period_recorder = scheduler_get_cpu_tick();
-        ret = true;
-    }
-    return ret;
 }

@@ -9,7 +9,6 @@
  * 
  */
 #include "cpu_time.h"
-
 #if defined(_WIN32) || defined(_WIN64)
 //define something for Windows (64-bit only)
 #include <windows.h>
@@ -64,3 +63,33 @@ uint64_t  getCurrentMilliSecTimestamp(){
 #else
 #error "Unknown"
 #endif
+
+void delayMs(uint64_t ms)
+{
+   uint64_t start = 0;
+   start =  getCurrentMilliSecTimestamp();
+   while ((getCurrentMilliSecTimestamp() - start) >= ms)
+   {
+   }
+}
+
+/**
+ * @brief 同period_query_user，只是时间记录再一个uint32_t*指向的变量中。
+ *
+ * @param period_recorder 记录运行时间的变量的指针。
+ * @param period 周期。
+ * @return true 周期到了
+ * @return false 周期未到。
+ */
+bool period_query_user(uint64_t *period_recorder, uint64_t period)
+{
+    bool ret = false;
+    // 这里一定是>=，如果是 > ，那么在1 cpu tick间隔的时候时间上是2cpu tick执行一次。
+    // 这里不允许period为0，不然就会失去调度作用。
+    if ((getCurrentMilliSecTimestamp() - *period_recorder) >= period)
+    {
+        *period_recorder = getCurrentMilliSecTimestamp();
+        ret = true;
+    }
+    return ret;
+}
