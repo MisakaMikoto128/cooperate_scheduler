@@ -38,7 +38,7 @@ static float oen_tick_time = 1; // ms
  * @return true
  * @return false
  */
-bool BoolFunctional_execute(BoolFunctional_t *functional)
+static bool BoolFunctional_execute(BoolFunctional_t *functional)
 {
     bool exe_source_free = false;
     if (functional->fun != NULL)
@@ -302,4 +302,15 @@ void cooperate_scheduler_set_task_freq(TaskNode_t *task, int freq)
     {
         task->period = 1000.0f / freq / oen_tick_time;
     }
+}
+
+/**
+ * @brief 获取指定时间对应的tick数量。
+ *
+ * @param ms 时间，单位ms.
+ * @return uint32_t tick数。
+ */
+uint32_t cooperate_scheduler_get_ms_ticks(uint32_t ms)
+{
+    return ms / oen_tick_time;
 }

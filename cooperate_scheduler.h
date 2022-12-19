@@ -163,4 +163,12 @@ bool cooperate_group_unregister(CooperativeGroup_t *group, TaskNode_t *task);
  */
 void cooperate_scheduler_set_task_freq(TaskNode_t *task, int freq);
 
+/**
+ * @brief 获取指定时间对应的tick数量。
+ * 
+ * @param ms 时间，单位ms.
+ * @return uint32_t tick数。
+ */
+uint32_t cooperate_scheduler_get_ms_ticks(uint32_t ms);
+
 #endif //! cooperate_scheduler_H
